@@ -1,0 +1,83 @@
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <h4><%= task ? 'Редактировать задачу' : 'Новая задача' %></h4>
+        
+        <form action="<%= task ? '/tasks/' + task.id + '?_method=PUT' : '/tasks' %>" method="POST" enctype="multipart/form-data">
+            
+            <div class="mb-3">
+                <label class="form-label">Название</label>
+                <input type="text" name="title" class="form-control" value="<%= task ? task.title : '' %>" required>
+            </div>
+
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Категория</label>
+                    <select name="category_id" class="form-select">
+                        <option value="">Нет</option>
+                        <% categories.forEach(c => { %>
+                            <option value="<%= c.id %>" <%= task && task.category_id == c.id ? 'selected' : '' %>><%= c.name %></option>
+                        <% }) %>
+                    </select>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Предмет</label>
+                    <select name="subject_id" class="form-select">
+                        <option value="">Нет</option>
+                        <% subjects.forEach(s => { %>
+                            <option value="<%= s.id %>" <%= task && task.subject_id == s.id ? 'selected' : '' %>><%= s.name %></option>
+                        <% }) %>
+                    </select>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Статус</label>
+                    <select name="status_id" class="form-select">
+                        <option value="">Нет</option>
+                        <% statuses.forEach(s => { %>
+                            <option value="<%= s.id %>" <%= task && task.status_id == s.id ? 'selected' : '' %>><%= s.name %></option>
+                        <% }) %>
+                    </select>
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Дедлайн</label>
+                <input type="date" name="deadline" class="form-control" value="<%= task ? task.deadline : '' %>">
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Примечание</label>
+                <textarea name="note" class="form-control" rows="3"><%= task ? task.note : '' %></textarea>
+            </div>
+
+            <% if (task && task.files && task.files.length > 0) { %>
+                <div class="mb-3">
+                    <label class="form-label">Уже прикрепленные файлы:</label>
+                    <ul class="list-group">
+                        <% task.files.forEach(file => { %>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                <a href="/uploads/<%= file.file_name %>" target="_blank"><%= file.original_file_name %></a>
+                                <button type="submit" form="del-file-<%= file.id %>" class="btn btn-sm btn-danger">Удалить</button>
+                            </li>
+                        <% }) %>
+                    </ul>
+                </div>
+            <% } %>
+
+            <div class="mb-4">
+                <label class="form-label">Прикрепить новые файлы</label>
+                <input type="file" name="files" class="form-control" multiple>
+            </div>
+
+            <div class="d-flex justify-content-between">
+                <a href="/" class="btn btn-secondary">Отмена</a>
+                <button type="submit" class="btn btn-primary">Сохранить</button>
+            </div>
+        </form>
+
+        <% if (task && task.files) { %>
+            <% task.files.forEach(file => { %>
+                <form id="del-file-<%= file.id %>" action="/tasks/<%= task.id %>/files/<%= file.id %>?_method=DELETE" method="POST" style="display:none;"></form>
+            <% }) %>
+        <% } %>
+    </div>
+</div>

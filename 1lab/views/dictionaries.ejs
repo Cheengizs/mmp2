@@ -1,0 +1,79 @@
+<div class="row">
+    <!-- Категории -->
+    <div class="col-md-4 mb-4">
+        <div class="card">
+            <div class="card-header bg-primary text-white">Категории</div>
+            <div class="card-body">
+                <form action="/categories" method="POST" class="d-flex gap-2 mb-3">
+                    <input type="text" name="name" class="form-control" placeholder="Новая категория" required>
+                    <button type="submit" class="btn btn-primary">+</button>
+                </form>
+                <ul class="list-group">
+                    <% categories.forEach(c => { %>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <form action="/categories/<%= c.id %>?_method=PUT" method="POST" class="d-flex gap-2 m-0 flex-grow-1 me-2">
+                                <input type="text" name="name" class="form-control form-control-sm" value="<%= c.name %>" required>
+                                <button type="submit" class="btn btn-sm btn-outline-success">✎</button>
+                            </form>
+                            <form action="/categories/<%= c.id %>?_method=DELETE" method="POST" class="m-0">
+                                <button type="submit" class="btn btn-sm btn-outline-danger border-0">✕</button>
+                            </form>
+                        </li>
+                    <% }) %>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Статусы -->
+    <div class="col-md-4 mb-4">
+        <div class="card">
+            <div class="card-header bg-success text-white">Статусы</div>
+            <div class="card-body">
+                <form action="/statuses" method="POST" class="d-flex gap-2 mb-3">
+                    <input type="text" name="name" class="form-control" placeholder="Новый статус" required>
+                    <button type="submit" class="btn btn-success">+</button>
+                </form>
+                <ul class="list-group">
+                    <% statuses.forEach(s => { %>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <form action="/statuses/<%= s.id %>?_method=PUT" method="POST" class="d-flex gap-2 m-0 flex-grow-1 me-2">
+                                <input type="text" name="name" class="form-control form-control-sm" value="<%= s.name %>" required>
+                                <button type="submit" class="btn btn-sm btn-outline-success">✎</button>
+                            </form>
+                            <form action="/statuses/<%= s.id %>?_method=DELETE" method="POST" class="m-0">
+                                <button type="submit" class="btn btn-sm btn-outline-danger border-0">✕</button>
+                            </form>
+                        </li>
+                    <% }) %>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Предметы -->
+    <div class="col-md-4 mb-4">
+        <div class="card">
+            <div class="card-header bg-info text-white">Предметы</div>
+            <div class="card-body">
+                <form action="/subjects" method="POST" class="d-flex gap-2 mb-3">
+                    <input type="text" name="name" class="form-control" placeholder="Новый предмет" required>
+                    <button type="submit" class="btn btn-info text-white">+</button>
+                </form>
+                <ul class="list-group">
+                    <% subjects.forEach(s => { %>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <form action="/subjects/<%= s.id %>?_method=PUT" method="POST" class="d-flex gap-2 m-0 flex-grow-1 me-2">
+                                <input type="text" name="name" class="form-control form-control-sm" value="<%= s.name %>" required>
+                                <button type="submit" class="btn btn-sm btn-outline-success">✎</button>
+                            </form>
+                            <form action="/subjects/<%= s.id %>?_method=DELETE" method="POST" class="m-0">
+                                <button type="submit" class="btn btn-sm btn-outline-danger border-0">✕</button>
+                            </form>
+                        </li>
+                    <% }) %>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
