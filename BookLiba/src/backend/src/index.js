@@ -1,5 +1,4 @@
 const path = require('path');
-// Загрузка .env СТРОГО до подключения модуля db
 require('dotenv').config({ path: path.resolve(__dirname, '../../../.env') });
 
 const express = require('express');
@@ -14,14 +13,12 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
-// Каталог для хранения загруженных обложек
 const uploadsDir = path.join(__dirname, '../uploads');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 app.use('/uploads', express.static(uploadsDir));
 
-// Конфигурация multer для multipart/form-data
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadsDir),
   filename: (req, file, cb) => {
@@ -33,7 +30,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // Ограничение: 5 МБ
+  limits: { fileSize: 50 * 1024 * 1024 }, 
   fileFilter: (req, file, cb) => {
     if (file.mimetype.startsWith('image/')) {
       cb(null, true);
@@ -43,7 +40,6 @@ const upload = multer({
   },
 });
 
-// Серверная валидация входных данных
 function validateBookData(title, author, year) {
   if (!title || typeof title !== 'string' || title.trim().length === 0) {
     return 'Поле "Название книги" обязательно для заполнения';
@@ -67,18 +63,16 @@ function validateBookData(title, author, year) {
   return null;
 }
 
-// 1. GET /api/books — список всех книг
 app.get('/api/books', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM books ORDER BY id DESC');
-    res.status(200).json(result.rows);
+    res.status(200).json(result.rows);  
   } catch (err) {
     console.error('Ошибка GET /api/books:', err);
     res.status(500).json({ error: 'Не удалось получить список книг' });
   }
 });
 
-// 2. GET /api/books/:id — получение одной книги
 app.get('/api/books/:id', async (req, res) => {
   const { id } = req.params;
   try {
@@ -93,7 +87,6 @@ app.get('/api/books/:id', async (req, res) => {
   }
 });
 
-// 3. POST /api/books — создание книги
 app.post('/api/books', upload.single('cover'), async (req, res) => {
   const { title, author, year } = req.body;
 
@@ -119,7 +112,6 @@ app.post('/api/books', upload.single('cover'), async (req, res) => {
   }
 });
 
-// 4. PUT /api/books/:id — обновление данных книги
 app.put('/api/books/:id', upload.single('cover'), async (req, res) => {
   const { id } = req.params;
   const { title, author, year } = req.body;
@@ -161,7 +153,6 @@ app.put('/api/books/:id', upload.single('cover'), async (req, res) => {
   }
 });
 
-// 5. DELETE /api/books/:id — удаление книги
 app.delete('/api/books/:id', async (req, res) => {
   const { id } = req.params;
   try {
@@ -183,7 +174,6 @@ app.delete('/api/books/:id', async (req, res) => {
   }
 });
 
-// Применение SQL и запуск сервера
 async function initDb() {
   try {
     const sqlPath = path.join(__dirname, '../../../db/db.sql');

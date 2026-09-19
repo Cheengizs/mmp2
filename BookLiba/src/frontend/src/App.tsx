@@ -125,7 +125,6 @@ export default function App() {
           </p>
         </header>
 
-        {/* Баннер ошибок */}
         {errorMessage && (
           <div style={styles.errorAlert}>
             <span><strong>Ошибка:</strong> {errorMessage}</span>
@@ -138,7 +137,6 @@ export default function App() {
           </div>
         )}
 
-        {/* Форма */}
         <form onSubmit={handleSubmit} style={styles.card}>
           <h2 style={styles.sectionTitle}>
             {editingId ? `Редактирование (ID: ${editingId})` : 'Добавить новую книгу'}
@@ -202,7 +200,6 @@ export default function App() {
           </div>
         </form>
 
-        {/* Список книг */}
         <h2 style={{ ...styles.sectionTitle, borderBottom: '1px solid #2e2e38', paddingBottom: 12, marginTop: 36 }}>
           Каталог ({books.length})
         </h2>
