@@ -175,13 +175,19 @@ app.delete('/api/books/:id', async (req, res) => {
 });
 
 async function initDb() {
+  const createTableQuery = `
+    CREATE TABLE IF NOT EXISTS books (
+      id SERIAL PRIMARY KEY,
+      title VARCHAR(255) NOT NULL,
+      author VARCHAR(255) NOT NULL,
+      year INT,
+      cover_url VARCHAR(500),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `;
   try {
-    const sqlPath = path.join(__dirname, '../../../db/db.sql');
-    if (fs.existsSync(sqlPath)) {
-      const sql = fs.readFileSync(sqlPath, 'utf-8');
-      await pool.query(sql);
-      console.log('Database initialized successfully');
-    }
+    await pool.query(createTableQuery);
+    console.log('Database initialized successfully');
   } catch (err) {
     console.error('Error initializing database:', err.message);
     process.exit(1);

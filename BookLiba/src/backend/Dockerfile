@@ -3,7 +3,6 @@ FROM node:20-alpine
 WORKDIR /app
 
 COPY package*.json ./
-
 RUN npm install --omit=dev
 
 COPY . .
@@ -11,5 +10,4 @@ COPY . .
 RUN mkdir -p uploads
 
 EXPOSE 5000
-
-CMD ["node", "index.js"]
+CMD ["node", "src/index.js"]
