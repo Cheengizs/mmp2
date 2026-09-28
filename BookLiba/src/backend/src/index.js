@@ -1,23 +1,28 @@
-const path = require('path');
-require('dotenv').config({ path: path.resolve(__dirname, '../../../.env') });
+const SALT_ROUNDS = 10;
 
-const express = require('express');
-const cors = require('cors');
-const fs = require('fs');
-const multer = require('multer');
-const pool = require('../db/db.js');
+const path = require("path");
+require("dotenv").config({ path: path.resolve(__dirname, "../../../.env") });
+
+const bcrypt = require("bcrypt");
+const express = require("express");
+const cors = require("cors");
+const fs = require("fs");
+const multer = require("multer");
+const pool = require("../db/db.js");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const jwt = require("jsonwebtoken");
+const { authenticateToken, requireMinRole, JWT_SECRET } = require("./auth.js");
 
 app.use(cors());
 app.use(express.json());
 
-const uploadsDir = path.join(__dirname, '../uploads');
+const uploadsDir = path.join(__dirname, "../uploads");
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
-app.use('/uploads', express.static(uploadsDir));
+app.use("/uploads", express.static(uploadsDir));
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadsDir),
@@ -30,64 +35,76 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: 50 * 1024 * 1024 }, 
+  limits: { fileSize: 50 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith('image/')) {
+    if (file.mimetype.startsWith("image/")) {
       cb(null, true);
     } else {
-      cb(new Error('Разрешены только файлы изображений (jpg, png, webp и др.)'));
+      cb(
+        new Error("Разрешены только файлы изображений (jpg, png, webp и др.)"),
+      );
     }
   },
 });
 
 function validateBookData(title, author, year) {
-  if (!title || typeof title !== 'string' || title.trim().length === 0) {
+  if (!title || typeof title !== "string" || title.trim().length === 0) {
     return 'Поле "Название книги" обязательно для заполнения';
   }
   if (title.trim().length > 255) {
-    return 'Название книги не должно превышать 255 символов';
+    return "Название книги не должно превышать 255 символов";
   }
-  if (!author || typeof author !== 'string' || author.trim().length === 0) {
+  if (!author || typeof author !== "string" || author.trim().length === 0) {
     return 'Поле "Автор" обязательно для заполнения';
   }
   if (author.trim().length > 255) {
-    return 'Имя автора не должно превышать 255 символов';
+    return "Имя автора не должно превышать 255 символов";
   }
-  if (year !== undefined && year !== null && year !== '') {
+  if (year !== undefined && year !== null && year !== "") {
     const parsedYear = Number(year);
     const currentYear = new Date().getFullYear();
-    if (!Number.isInteger(parsedYear) || parsedYear < -3000 || parsedYear > currentYear) {
+    if (
+      !Number.isInteger(parsedYear) ||
+      parsedYear < -3000 ||
+      parsedYear > currentYear
+    ) {
       return `Год издания должен быть числом в диапазоне от -3000 до ${currentYear}`;
     }
   }
   return null;
 }
 
-app.get('/api/books', async (req, res) => {
+app.use("/api/books", authenticateToken, requireMinRole("user"));
+
+app.get("/api/books", async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM books ORDER BY id DESC');
-    res.status(200).json(result.rows);  
+    const user = req.user;
+    const result = await pool.query(
+      "SELECT * FROM books ORDER BY id DESC WHERE user_id = $1",
+      [user.id],
+    );
+    res.status(200).json(result.rows);
   } catch (err) {
-    console.error('Ошибка GET /api/books:', err);
-    res.status(500).json({ error: 'Не удалось получить список книг' });
+    console.error("Ошибка GET /api/books:", err);
+    res.status(500).json({ error: "Не удалось получить список книг" });
   }
 });
 
-app.get('/api/books/:id', async (req, res) => {
+app.get("/api/books/:id", async (req, res) => {
   const { id } = req.params;
   try {
-    const result = await pool.query('SELECT * FROM books WHERE id = $1', [id]);
+    const result = await pool.query("SELECT * FROM books WHERE id = $1", [id]);
     if (result.rows.length === 0) {
       return res.status(404).json({ error: `Книга с ID ${id} не найдена` });
     }
     res.status(200).json(result.rows[0]);
   } catch (err) {
     console.error(`Ошибка GET /api/books/${id}:`, err);
-    res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+    res.status(500).json({ error: "Внутренняя ошибка сервера" });
   }
 });
 
-app.post('/api/books', upload.single('cover'), async (req, res) => {
+app.post("/api/books", upload.single("cover"), async (req, res) => {
   const { title, author, year } = req.body;
 
   const validationError = validateBookData(title, author, year);
@@ -101,18 +118,18 @@ app.post('/api/books', upload.single('cover'), async (req, res) => {
 
   try {
     const result = await pool.query(
-      'INSERT INTO books (title, author, year, cover_url) VALUES ($1, $2, $3, $4) RETURNING *',
-      [title.trim(), author.trim(), parsedYear, coverUrl]
+      "INSERT INTO books (title, author, year, cover_url) VALUES ($1, $2, $3, $4) RETURNING *",
+      [title.trim(), author.trim(), parsedYear, coverUrl],
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
-    console.error('Ошибка POST /api/books:', err);
+    console.error("Ошибка POST /api/books:", err);
     if (req.file) fs.unlinkSync(req.file.path);
-    res.status(500).json({ error: 'Не удалось сохранить книгу в базе данных' });
+    res.status(500).json({ error: "Не удалось сохранить книгу в базе данных" });
   }
 });
 
-app.put('/api/books/:id', upload.single('cover'), async (req, res) => {
+app.put("/api/books/:id", upload.single("cover"), async (req, res) => {
   const { id } = req.params;
   const { title, author, year } = req.body;
 
@@ -123,7 +140,9 @@ app.put('/api/books/:id', upload.single('cover'), async (req, res) => {
   }
 
   try {
-    const existing = await pool.query('SELECT * FROM books WHERE id = $1', [id]);
+    const existing = await pool.query("SELECT * FROM books WHERE id = $1", [
+      id,
+    ]);
     if (existing.rows.length === 0) {
       if (req.file) fs.unlinkSync(req.file.path);
       return res.status(404).json({ error: `Книга с ID ${id} не найдена` });
@@ -133,7 +152,7 @@ app.put('/api/books/:id', upload.single('cover'), async (req, res) => {
 
     if (req.file) {
       if (coverUrl) {
-        const oldFilePath = path.join(__dirname, '..', coverUrl);
+        const oldFilePath = path.join(__dirname, "..", coverUrl);
         if (fs.existsSync(oldFilePath)) fs.unlinkSync(oldFilePath);
       }
       coverUrl = `/uploads/${req.file.filename}`;
@@ -141,55 +160,130 @@ app.put('/api/books/:id', upload.single('cover'), async (req, res) => {
 
     const parsedYear = year ? parseInt(year, 10) : null;
     const result = await pool.query(
-      'UPDATE books SET title = $1, author = $2, year = $3, cover_url = $4 WHERE id = $5 RETURNING *',
-      [title.trim(), author.trim(), parsedYear, coverUrl, id]
+      "UPDATE books SET title = $1, author = $2, year = $3, cover_url = $4 WHERE id = $5 RETURNING *",
+      [title.trim(), author.trim(), parsedYear, coverUrl, id],
     );
 
     res.status(200).json(result.rows[0]);
   } catch (err) {
     console.error(`Ошибка PUT /api/books/${id}:`, err);
     if (req.file) fs.unlinkSync(req.file.path);
-    res.status(500).json({ error: 'Не удалось обновить книгу' });
+    res.status(500).json({ error: "Не удалось обновить книгу" });
   }
 });
 
-app.delete('/api/books/:id', async (req, res) => {
+app.delete("/api/books/:id", async (req, res) => {
   const { id } = req.params;
   try {
-    const result = await pool.query('DELETE FROM books WHERE id = $1 RETURNING cover_url', [id]);
+    const result = await pool.query(
+      "DELETE FROM books WHERE id = $1 RETURNING cover_url",
+      [id],
+    );
     if (result.rowCount === 0) {
       return res.status(404).json({ error: `Книга с ID ${id} не найдена` });
     }
 
     const coverUrl = result.rows[0].cover_url;
     if (coverUrl) {
-      const filePath = path.join(__dirname, '..', coverUrl);
+      const filePath = path.join(__dirname, "..", coverUrl);
       if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
     }
 
-    res.status(200).json({ message: 'Книга успешно удалена' });
+    res.status(200).json({ message: "Книга успешно удалена" });
   } catch (err) {
     console.error(`Ошибка DELETE /api/books/${id}:`, err);
-    res.status(500).json({ error: 'Не удалось удалить книгу' });
+    res.status(500).json({ error: "Не удалось удалить книгу" });
   }
+});
+
+app.post("/api/auth/register", async (req, res) => {
+  const { username, password } = req.body;
+
+  const userFromDb = await pool.query(
+    "SELECT username FROM users WHERE username = $1 LIMIT 1",
+    [username],
+  );
+
+  if (userFromDb.rows.length !== 0) {
+    return res
+      .status(409)
+      .json({ error: "Пользователь с таким username уже существует" });
+  }
+
+  const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+  await pool.query(
+    "INSERT INTO users (username, password_hash) VALUES ($1, $2)",
+    [username, passwordHash],
+  );
+
+  const token = jwt.sign({ username, role: "user" }, JWT_SECRET, {
+    expiresIn: "1h",
+  });
+
+  res.status(201).json({
+    message: "Пользователь успешно зарегистрирован",
+    accessToken: token,
+  });
+});
+
+app.post("/api/auth/login", async (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) {
+    return res.status(400).json({ error: "Логин и пароль обязательны" });
+  }
+  const userFromDb = await pool.query(
+    "SELECT username, password_hash, role FROM users WHERE username = $1 LIMIT 1",
+    [username],
+  );
+
+  if (userFromDb.rows.length === 0) {
+    return res.status(404).json({ error: "Пользователь не найден" });
+  }
+
+  const user = userFromDb.rows[0];
+  const isMatch = await bcrypt.compare(password, user.password_hash);
+
+  if (!isMatch) {
+    return res.status(401).json({ error: "Неверный логин или пароль" });
+  }
+
+  const role = user.role;
+
+  const token = jwt.sign({ username: user.username, role }, JWT_SECRET, {
+    expiresIn: "1h",
+  });
+
+  res.status(200).json({
+    message: "Успешный вход в систему",
+    accessToken: token,
+  });
 });
 
 async function initDb() {
   const createTableQuery = `
+    CREATE TABLE IF NOT EXISTS users (                                       
+      id SERIAL PRIMARY KEY,
+      username VARCHAR(50) UNIQUE NOT NULL,
+      password_hash VARCHAR(255) NOT NULL,
+      role VARCHAR(20) NOT NULL DEFAULT 'user',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS books (
       id SERIAL PRIMARY KEY,
       title VARCHAR(255) NOT NULL,
       author VARCHAR(255) NOT NULL,
       year INT,
       cover_url VARCHAR(500),
+      user_id INT REFERENCES users(id) ON DELETE CASCADE,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
   `;
   try {
     await pool.query(createTableQuery);
-    console.log('Database initialized successfully');
+    console.log("Database initialized successfully");
   } catch (err) {
-    console.error('Error initializing database:', err.message);
+    console.error("Error initializing database:", err.message);
     process.exit(1);
   }
 }
