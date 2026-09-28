@@ -11,10 +11,12 @@ export type Role = 'user' | 'vip' | 'admin';
 export interface User {
   username: string;
   role: Role;
+  bgColor?: string;
 }
 
 export interface AuthResponse {
   message?: string;
   accessToken?: string;
+  bgColor?: string;
   error?: string;
 }

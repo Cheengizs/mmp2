@@ -4,9 +4,24 @@ import type { User } from '../types';
 interface NavbarProps {
   user: User;
   onLogout: () => void;
+  onThemeChange?: (color: string) => void;
+  currentBg?: string;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
+const THEME_PRESETS = [
+  { name: 'По умолчанию', color: '#121214' },
+  { name: 'Navy Blue', color: '#0f172a' },
+  { name: 'Графит', color: '#18181b' },
+  { name: 'Изумруд', color: '#064e3b' },
+  { name: 'Аметист', color: '#2e1065' },
+];
+
+export const Navbar: React.FC<NavbarProps> = ({
+  user,
+  onLogout,
+  onThemeChange,
+  currentBg,
+}) => {
   const getRoleBadgeStyle = (role: string): React.CSSProperties => {
     switch (role) {
       case 'admin':
@@ -18,6 +33,8 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
     }
   };
 
+  const isVipOrAdmin = user.role === 'vip' || user.role === 'admin';
+
   return (
     <header style={styles.header}>
       <div>
@@ -26,6 +43,31 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
       </div>
 
       <div style={styles.userInfo}>
+        {isVipOrAdmin && (
+          <div style={styles.themePicker}>
+            <span style={styles.themeLabel}>⭐ VIP Фон:</span>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              {THEME_PRESETS.map((t) => {
+                const isSelected = currentBg === t.color;
+                return (
+                  <button
+                    key={t.color}
+                    type="button"
+                    title={t.name}
+                    onClick={() => onThemeChange?.(t.color)}
+                    style={{
+                      ...styles.colorDot,
+                      backgroundColor: t.color,
+                      border: isSelected ? '2px solid #60a5fa' : '1px solid #4b5563',
+                      transform: isSelected ? 'scale(1.15)' : 'scale(1)',
+                    }}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div style={styles.userBadge}>
           <span style={styles.userName}>👤 {user.username}</span>
           <span style={{ ...styles.roleBadge, ...getRoleBadgeStyle(user.role) }}>
@@ -48,6 +90,8 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: 28,
     borderBottom: '1px solid #2e2e38',
     paddingBottom: 16,
+    flexWrap: 'wrap',
+    gap: 16,
   },
   title: {
     fontSize: 26,
@@ -64,6 +108,29 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     gap: 12,
+    flexWrap: 'wrap',
+  },
+  themePicker: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#1c1c21',
+    border: '1px solid #2e2e38',
+    padding: '6px 12px',
+    borderRadius: 8,
+  },
+  themeLabel: {
+    fontSize: 12,
+    fontWeight: 600,
+    color: '#fbbf24',
+  },
+  colorDot: {
+    width: 20,
+    height: 20,
+    borderRadius: '50%',
+    cursor: 'pointer',
+    padding: 0,
+    transition: 'transform 0.15s ease, border-color 0.15s ease',
   },
   userBadge: {
     display: 'flex',

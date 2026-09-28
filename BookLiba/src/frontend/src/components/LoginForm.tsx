@@ -2,8 +2,9 @@ import React, { useState } from "react";
 
 interface LoginFormProps {
   apiBase: string;
-  onSuccess: (token: string, username: string, role: string) => void;
+  onSuccess: (token: string, username: string, role: string, bgColor?: string) => void;
   onSwitchToRegister: () => void;
+  onForgotPassword: () => void;
   onError: (msg: string) => void;
 }
 
@@ -11,6 +12,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
   apiBase,
   onSuccess,
   onSwitchToRegister,
+  onForgotPassword,
   onError,
 }) => {
   const [username, setUsername] = useState("");
@@ -36,6 +38,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
         data.accessToken,
         payload.username || username,
         payload.role || "user",
+        data.bgColor,
       );
     } catch (err: any) {
       onError(err.message || "Ошибка сети");
@@ -64,7 +67,16 @@ export const LoginForm: React.FC<LoginFormProps> = ({
         </div>
 
         <div style={styles.formGroup}>
-          <label style={styles.label}>Пароль</label>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <label style={styles.label}>Пароль</label>
+            <button
+              type="button"
+              onClick={onForgotPassword}
+              style={{ ...styles.linkButton, fontSize: 12 }}
+            >
+              Забыли пароль?
+            </button>
+          </div>
           <input
             type="password"
             style={styles.input}

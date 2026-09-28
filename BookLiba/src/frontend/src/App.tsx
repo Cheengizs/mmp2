@@ -3,6 +3,7 @@ import type { Book, User } from "./types";
 import { Navbar } from "./components/Navbar";
 import { LoginForm } from "./components/LoginForm";
 import { RegisterForm } from "./components/RegisterForm";
+import { ForgotPasswordModal } from "./components/ForgotPasswordModal";
 import { BookForm } from "./components/BookForm";
 import { BookList } from "./components/BookList";
 
@@ -16,7 +17,11 @@ export default function App() {
     const saved = localStorage.getItem("user");
     return saved ? JSON.parse(saved) : null;
   });
-  const [authView, setAuthView] = useState<"login" | "register">("login");
+  const [bgColor, setBgColor] = useState<string>(() => {
+    return localStorage.getItem("bgColor") || "#121214";
+  });
+  const [authView, setAuthView] = useState<"login" | "register" | "forgot">("login");
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const [books, setBooks] = useState<Book[]>([]);
   const [title, setTitle] = useState("");
@@ -30,21 +35,63 @@ export default function App() {
     newToken: string,
     username: string,
     role: string,
+    newBgColor?: string,
   ) => {
-    const userData: User = { username, role: role as any };
+    const savedBg = newBgColor || "#121214";
+    const userData: User = { username, role: role as any, bgColor: savedBg };
     setToken(newToken);
     setUser(userData);
+    setBgColor(savedBg);
     localStorage.setItem("token", newToken);
     localStorage.setItem("user", JSON.stringify(userData));
+    localStorage.setItem("bgColor", savedBg);
     setErrorMessage(null);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    if (token) {
+      try {
+        await fetch(`${API_BASE}/api/auth/logout`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      } catch (err) {
+      }
+    }
     setToken(null);
     setUser(null);
+    setBgColor("#121214");
     localStorage.removeItem("token");
     localStorage.removeItem("user");
+    localStorage.removeItem("bgColor");
     setBooks([]);
+  };
+
+  const handleThemeChange = async (newColor: string) => {
+    setBgColor(newColor);
+    localStorage.setItem("bgColor", newColor);
+    if (user) {
+      const updatedUser = { ...user, bgColor: newColor };
+      setUser(updatedUser);
+      localStorage.setItem("user", JSON.stringify(updatedUser));
+    }
+    if (!token) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/users/theme`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ bgColor: newColor }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setErrorMessage(data.error || "Не удалось сохранить тему на сервере");
+      }
+    } catch (err: any) {
+      console.error("Ошибка при сохранении темы:", err);
+    }
   };
 
   const clearBookForm = () => {
@@ -134,7 +181,7 @@ export default function App() {
     setAuthor(book.author);
     setYear(book.year ? String(book.year) : "");
     setErrorMessage(null);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleDeleteBook = async (id: number) => {
@@ -165,7 +212,12 @@ export default function App() {
   };
 
   return (
-    <div style={styles.pageWrapper}>
+    <div
+      style={{
+        ...styles.pageWrapper,
+        backgroundColor: bgColor,
+      }}
+    >
       <div style={styles.container}>
         {errorMessage && (
           <div style={styles.errorAlert}>
@@ -181,6 +233,20 @@ export default function App() {
           </div>
         )}
 
+        {successMessage && (
+          <div style={styles.successAlert}>
+            <span>
+              <strong>Успешно:</strong> {successMessage}
+            </span>
+            <button
+              onClick={() => setSuccessMessage(null)}
+              style={styles.closeSuccessButton}
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         {!token || !user ? (
           authView === "login" ? (
             <LoginForm
@@ -188,24 +254,48 @@ export default function App() {
               onSuccess={handleLoginSuccess}
               onSwitchToRegister={() => {
                 setErrorMessage(null);
+                setSuccessMessage(null);
                 setAuthView("register");
+              }}
+              onForgotPassword={() => {
+                setErrorMessage(null);
+                setSuccessMessage(null);
+                setAuthView("forgot");
               }}
               onError={setErrorMessage}
             />
-          ) : (
+          ) : authView === "register" ? (
             <RegisterForm
               apiBase={API_BASE}
               onSuccess={handleLoginSuccess}
               onSwitchToLogin={() => {
                 setErrorMessage(null);
+                setSuccessMessage(null);
                 setAuthView("login");
+              }}
+              onError={setErrorMessage}
+            />
+          ) : (
+            <ForgotPasswordModal
+              apiBase={API_BASE}
+              onClose={() => {
+                setErrorMessage(null);
+                setAuthView("login");
+              }}
+              onSuccessMessage={(msg) => {
+                setSuccessMessage(msg);
               }}
               onError={setErrorMessage}
             />
           )
         ) : (
           <>
-            <Navbar user={user} onLogout={handleLogout} />
+            <Navbar
+              user={user}
+              onLogout={handleLogout}
+              onThemeChange={handleThemeChange}
+              currentBg={bgColor}
+            />
 
             <BookForm
               title={title}
@@ -242,6 +332,7 @@ const styles: Record<string, React.CSSProperties> = {
       'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
     padding: "40px 16px",
     boxSizing: "border-box",
+    transition: "background-color 0.3s ease",
   },
   container: {
     maxWidth: 760,
@@ -263,6 +354,26 @@ const styles: Record<string, React.CSSProperties> = {
     background: "transparent",
     border: "none",
     color: "#fca5a5",
+    cursor: "pointer",
+    fontSize: 16,
+    fontWeight: "bold",
+  },
+  successAlert: {
+    backgroundColor: "#064e3b",
+    border: "1px solid #047857",
+    color: "#a7f3d0",
+    padding: "12px 16px",
+    borderRadius: 6,
+    marginBottom: 20,
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    fontSize: 14,
+  },
+  closeSuccessButton: {
+    background: "transparent",
+    border: "none",
+    color: "#a7f3d0",
     cursor: "pointer",
     fontSize: 16,
     fontWeight: "bold",

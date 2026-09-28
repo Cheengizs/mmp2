@@ -1,8 +1,9 @@
 const jwt = require("jsonwebtoken");
-const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_SECRET = process.env.JWT_SECRET || process.env.JWTSECRET || "default_jwt_secret";
+const { isSessionActive } = require("./session.js");
 
 function authenticateToken(req, res, next) {
-  const authHeader = req.headers["Authorization"];
+  const authHeader = req.headers["authorization"] || req.headers["Authorization"];
   if (!authHeader) {
     return res.status(401).json({ error: "Нет заголовка авторизации" });
   }
@@ -10,16 +11,22 @@ function authenticateToken(req, res, next) {
   const splittedAuthHeader = authHeader.split(" ");
   const authType = splittedAuthHeader[0];
   const token = splittedAuthHeader[1];
-  if (!authType || authType.toLowerCase() != "bearer") {
+  if (!authType || authType.toLowerCase() !== "bearer" || !token) {
     return res.status(401).json({ error: "Не bearer или нет токена вовсе" });
   }
 
-  jwt.verify(token, JWT_SECRET, (err, user) => {
+  jwt.verify(token, JWT_SECRET, async (err, user) => {
     if (err) {
-      return res.status(403).json({ error: "Токен невалидный" });
+      return res.status(403).json({ error: "Токен невалидный или истёк" });
+    }
+
+    const active = await isSessionActive(token);
+    if (!active) {
+      return res.status(401).json({ error: "Сессия завершена или деактивирована" });
     }
 
     req.user = user;
+    req.token = token;
     next();
   });
 }

@@ -12,16 +12,26 @@ const pool = require("../db/db.js");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const { authenticateToken, requireMinRole, JWT_SECRET } = require("./auth.js");
+const adminRoutes = require("./routes/admin.js");
+const { logger, httpLogger } = require("./logger.js");
+const { authLimiter } = require("./middleware/rateLimiter.js");
+const { createSession, deactivateSession } = require("./session.js");
+const { sendPasswordResetEmail } = require("./email.js");
+const redis = require("./redis.js");
 
 app.use(cors());
 app.use(express.json());
+app.use(httpLogger);
 
 const uploadsDir = path.join(__dirname, "../uploads");
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
+
+app.use("/api/admin", adminRoutes);
 app.use("/uploads", express.static(uploadsDir));
 
 const storage = multer.diskStorage({
@@ -80,7 +90,10 @@ app.get("/api/books", async (req, res) => {
   try {
     const user = req.user;
     const result = await pool.query(
-      "SELECT * FROM books ORDER BY id DESC WHERE user_id = $1",
+      `SELECT id, title, author, year, cover_url 
+      FROM books
+      WHERE user_id = $1
+      ORDER BY id DESC`,
       [user.id],
     );
     res.status(200).json(result.rows);
@@ -118,8 +131,8 @@ app.post("/api/books", upload.single("cover"), async (req, res) => {
 
   try {
     const result = await pool.query(
-      "INSERT INTO books (title, author, year, cover_url) VALUES ($1, $2, $3, $4) RETURNING *",
-      [title.trim(), author.trim(), parsedYear, coverUrl],
+      "INSERT INTO books (title, author, year, cover_url, user_id) VALUES ($1, $2, $3, $4, $5) RETURNING *",
+      [title.trim(), author.trim(), parsedYear, coverUrl, req.user.id],
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -196,8 +209,8 @@ app.delete("/api/books/:id", async (req, res) => {
   }
 });
 
-app.post("/api/auth/register", async (req, res) => {
-  const { username, password } = req.body;
+app.post("/api/auth/register", authLimiter, async (req, res) => {
+  const { username, password, email } = req.body;
 
   const userFromDb = await pool.query(
     "SELECT username FROM users WHERE username = $1 LIMIT 1",
@@ -211,28 +224,34 @@ app.post("/api/auth/register", async (req, res) => {
   }
 
   const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
-  await pool.query(
-    "INSERT INTO users (username, password_hash) VALUES ($1, $2)",
-    [username, passwordHash],
+  const insertUser = await pool.query(
+    "INSERT INTO users (username, password_hash, email) VALUES ($1, $2, $3) RETURNING id, username, role, email, bg_color",
+    [username, passwordHash, email || null],
+  );
+  const newUser = insertUser.rows[0];
+
+  const token = jwt.sign(
+    { id: newUser.id, username: newUser.username, role: newUser.role },
+    JWT_SECRET,
+    { expiresIn: "1h" },
   );
 
-  const token = jwt.sign({ username, role: "user" }, JWT_SECRET, {
-    expiresIn: "1h",
-  });
+  await createSession(newUser.id, newUser.username, newUser.role, token, req);
 
   res.status(201).json({
     message: "Пользователь успешно зарегистрирован",
     accessToken: token,
+    bgColor: newUser.bg_color || "#121214",
   });
 });
 
-app.post("/api/auth/login", async (req, res) => {
+app.post("/api/auth/login", authLimiter, async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) {
     return res.status(400).json({ error: "Логин и пароль обязательны" });
   }
   const userFromDb = await pool.query(
-    "SELECT username, password_hash, role FROM users WHERE username = $1 LIMIT 1",
+    "SELECT id, username, password_hash, role, bg_color FROM users WHERE username = $1 LIMIT 1",
     [username],
   );
 
@@ -249,15 +268,129 @@ app.post("/api/auth/login", async (req, res) => {
 
   const role = user.role;
 
-  const token = jwt.sign({ username: user.username, role }, JWT_SECRET, {
-    expiresIn: "1h",
-  });
+  const token = jwt.sign(
+    { id: user.id, username: user.username, role },
+    JWT_SECRET,
+    { expiresIn: "1h" },
+  );
+
+  await createSession(user.id, user.username, role, token, req);
 
   res.status(200).json({
     message: "Успешный вход в систему",
     accessToken: token,
+    bgColor: user.bg_color || "#121214",
   });
 });
+
+app.post("/api/auth/logout", authenticateToken, async (req, res) => {
+  try {
+    await deactivateSession(req.token);
+    res.status(200).json({ message: "Сессия успешно завершена" });
+  } catch (err) {
+    res.status(500).json({ error: "Ошибка при выходе из системы" });
+  }
+});
+
+app.post("/api/auth/forgot-password", authLimiter, async (req, res) => {
+  const { email } = req.body;
+  if (!email || typeof email !== "string" || !email.includes("@")) {
+    return res.status(400).json({ error: "Укажите корректный email адрес" });
+  }
+
+  try {
+    const userRes = await pool.query(
+      "SELECT id, username FROM users WHERE email = $1 LIMIT 1",
+      [email.trim().toLowerCase()],
+    );
+
+    if (userRes.rows.length === 0) {
+      return res.status(200).json({
+        message: "Если данный email зарегистрирован, инструкция по сбросу пароля отправлена.",
+      });
+    }
+
+    const user = userRes.rows[0];
+    const resetToken = crypto.randomBytes(32).toString("hex");
+
+    await redis.set(`password_reset:${resetToken}`, user.id, "EX", 900);
+
+    const previewUrl = await sendPasswordResetEmail(email.trim().toLowerCase(), resetToken);
+
+    res.status(200).json({
+      message: "Ссылка для сброса пароля отправлена на почту (действительна 15 минут).",
+      previewUrl: typeof previewUrl === "string" ? previewUrl : undefined,
+      resetToken,
+    });
+  } catch (err) {
+    logger.error({ err }, "Ошибка при запросе сброса пароля");
+    res.status(500).json({ error: "Не удалось отправить письмо для сброса пароля" });
+  }
+});
+
+app.post("/api/auth/reset-password", authLimiter, async (req, res) => {
+  const { token, newPassword } = req.body;
+  if (!token || !newPassword) {
+    return res.status(400).json({ error: "Токен сброса и новый пароль обязательны" });
+  }
+  if (newPassword.length < 6) {
+    return res.status(400).json({ error: "Пароль должен содержать не менее 6 символов" });
+  }
+
+  try {
+    const userId = await redis.get(`password_reset:${token}`);
+    if (!userId) {
+      return res.status(400).json({
+        error: "Ссылка для сброса пароля недействительна или истёк срок её действия (15 минут)",
+      });
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+    await pool.query("UPDATE users SET password_hash = $1 WHERE id = $2", [
+      passwordHash,
+      userId,
+    ]);
+
+    await redis.del(`password_reset:${token}`);
+
+    logger.info({ userId }, "Пароль пользователя успешно обновлён через сброс по email");
+    res.status(200).json({
+      message: "Пароль успешно изменён! Теперь вы можете войти с новым паролем.",
+    });
+  } catch (err) {
+    logger.error({ err }, "Ошибка при сбросе пароля");
+    res.status(500).json({ error: "Не удалось обновить пароль" });
+  }
+});
+
+app.patch(
+  "/api/users/theme",
+  authenticateToken,
+  requireMinRole("vip"),
+  async (req, res) => {
+    const { bgColor } = req.body;
+
+    if (!bgColor || typeof bgColor !== "string") {
+      return res.status(400).json({ error: "Некорректный цвет фона" });
+    }
+
+    try {
+      const username = req.user.username;
+      const result = await pool.query(
+        "UPDATE users SET bg_color = $1 WHERE username = $2 RETURNING bg_color",
+        [bgColor, username],
+      );
+
+      res.status(200).json({
+        message: "Тема успешно обновлена",
+        bgColor: result.rows[0].bg_color,
+      });
+    } catch (err) {
+      console.error("Ошибка при обновлении темы:", err);
+      res.status(500).json({ error: "Не удалось сохранить тему оформления" });
+    }
+  },
+);
 
 async function initDb() {
   const createTableQuery = `
@@ -265,9 +398,14 @@ async function initDb() {
       id SERIAL PRIMARY KEY,
       username VARCHAR(50) UNIQUE NOT NULL,
       password_hash VARCHAR(255) NOT NULL,
+      email VARCHAR(100) UNIQUE,
       role VARCHAR(20) NOT NULL DEFAULT 'user',
+      bg_color VARCHAR(30) DEFAULT '#121214',
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
+
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(100) UNIQUE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS bg_color VARCHAR(30) DEFAULT '#121214';
 
     CREATE TABLE IF NOT EXISTS books (
       id SERIAL PRIMARY KEY,
@@ -281,15 +419,22 @@ async function initDb() {
   `;
   try {
     await pool.query(createTableQuery);
-    console.log("Database initialized successfully");
+    logger.info("Database initialized successfully");
   } catch (err) {
-    console.error("Error initializing database:", err.message);
+    logger.error({ err }, "Error initializing database");
     process.exit(1);
   }
 }
 
+app.use((err, req, res, next) => {
+  req.log ? req.log.error(err) : logger.error(err);
+  res.status(err.status || 500).json({
+    error: err.message || "Внутренняя ошибка сервера",
+  });
+});
+
 initDb().then(() => {
   app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+    logger.info({ port: PORT }, `Server is running on port ${PORT}`);
   });
 });

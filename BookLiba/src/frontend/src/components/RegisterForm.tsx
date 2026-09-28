@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 
 interface RegisterFormProps {
   apiBase: string;
-  onSuccess: (token: string, username: string, role: string) => void;
+  onSuccess: (token: string, username: string, role: string, bgColor?: string) => void;
   onSwitchToLogin: () => void;
   onError: (msg: string) => void;
 }
@@ -14,6 +14,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
   onError,
 }) => {
   const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -30,7 +31,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
       const res = await fetch(`${apiBase}/api/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username, password, email: email || undefined }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -38,7 +39,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
       }
 
       const payload = JSON.parse(atob(data.accessToken.split('.')[1]));
-      onSuccess(data.accessToken, payload.username || username, payload.role || 'user');
+      onSuccess(data.accessToken, payload.username || username, payload.role || 'user', data.bgColor);
     } catch (err: any) {
       onError(err.message || 'Ошибка сети');
     } finally {
@@ -60,6 +61,17 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             required
+          />
+        </div>
+
+        <div style={styles.formGroup}>
+          <label style={styles.label}>Email (для восстановления пароля)</label>
+          <input
+            type="email"
+            style={styles.input}
+            placeholder="example@mail.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
           />
         </div>
 
