@@ -26,7 +26,7 @@ async function getTransporter() {
         pass: testAccount.pass,
       },
     });
-    logger.info("Создан тестовый Ethereal SMTP аккаунт для отправки почты");
+    logger.info("Test Ethereal SMTP account created");
   }
 
   return transporter;
@@ -58,13 +58,13 @@ async function sendPasswordResetEmail(toEmail, resetToken) {
 
   logger.info(
     { messageId: info.messageId, to: toEmail },
-    "Письмо сброса пароля отправлено",
+    "Password reset email sent",
   );
 
   const previewUrl = nodemailer.getTestMessageUrl(info);
   if (previewUrl) {
     logger.info(
-      `[Эмуляция Email] Просмотр отправленного письма: ${previewUrl}`,
+      `[Email Preview] Message URL: ${previewUrl}`,
     );
   }
 

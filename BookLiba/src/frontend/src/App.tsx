@@ -6,6 +6,7 @@ import { RegisterForm } from "./components/RegisterForm";
 import { ForgotPasswordModal } from "./components/ForgotPasswordModal";
 import { BookForm } from "./components/BookForm";
 import { BookList } from "./components/BookList";
+import { AdminPanelModal } from "./components/AdminPanelModal";
 
 const API_BASE = "http://localhost:5000";
 
@@ -20,7 +21,9 @@ export default function App() {
   const [bgColor, setBgColor] = useState<string>(() => {
     return localStorage.getItem("bgColor") || "#121214";
   });
-  const [authView, setAuthView] = useState<"login" | "register" | "forgot">("login");
+  const [authView, setAuthView] = useState<"login" | "register" | "forgot">(
+    "login",
+  );
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const [books, setBooks] = useState<Book[]>([]);
@@ -30,6 +33,7 @@ export default function App() {
   const [file, setFile] = useState<File | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isAdminOpen, setIsAdminOpen] = useState(false);
 
   const handleLoginSuccess = (
     newToken: string,
@@ -55,8 +59,7 @@ export default function App() {
           method: "POST",
           headers: { Authorization: `Bearer ${token}` },
         });
-      } catch (err) {
-      }
+      } catch (err) {}
     }
     setToken(null);
     setUser(null);
@@ -65,6 +68,7 @@ export default function App() {
     localStorage.removeItem("user");
     localStorage.removeItem("bgColor");
     setBooks([]);
+    setIsAdminOpen(false);
   };
 
   const handleThemeChange = async (newColor: string) => {
@@ -181,7 +185,7 @@ export default function App() {
     setAuthor(book.author);
     setYear(book.year ? String(book.year) : "");
     setErrorMessage(null);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const handleDeleteBook = async (id: number) => {
@@ -295,7 +299,22 @@ export default function App() {
               onLogout={handleLogout}
               onThemeChange={handleThemeChange}
               currentBg={bgColor}
+              onOpenAdminPanel={() => setIsAdminOpen(true)}
             />
+
+            {isAdminOpen && token && (
+              <AdminPanelModal
+                apiBase={API_BASE}
+                token={token}
+                currentUsername={user.username}
+                onClose={() => setIsAdminOpen(false)}
+                onError={(err) => setErrorMessage(err)}
+                onLogoutSelf={() => {
+                  setIsAdminOpen(false);
+                  handleLogout();
+                }}
+              />
+            )}
 
             <BookForm
               title={title}

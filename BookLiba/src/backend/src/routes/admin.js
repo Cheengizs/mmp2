@@ -23,7 +23,9 @@ router.get("/sessions", async (req, res) => {
     const sessions = await getActiveSessions();
     res.json(sessions);
   } catch (err) {
-    res.status(500).json({ error: "Не удалось получить список сессий из Redis" });
+    res
+      .status(500)
+      .json({ error: "Не удалось получить список сессий из Redis" });
   }
 });
 

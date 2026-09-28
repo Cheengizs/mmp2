@@ -14,7 +14,7 @@ const authLimiter = rateLimit({
   handler: (req, res, next, options) => {
     logger.warn(
       { ip: req.ip, path: req.originalUrl },
-      "Rate Limiter: превышен лимит попыток входа, IP временно заблокирован на 3 минуты",
+      "Rate limiter: too many login attempts, IP temporarily blocked for 3 minutes",
     );
     res.status(options.statusCode).json(options.message);
   },

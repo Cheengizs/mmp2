@@ -98,7 +98,7 @@ app.get("/api/books", async (req, res) => {
     );
     res.status(200).json(result.rows);
   } catch (err) {
-    console.error("Ошибка GET /api/books:", err);
+    console.error("Error GET /api/books:", err);
     res.status(500).json({ error: "Не удалось получить список книг" });
   }
 });
@@ -112,7 +112,7 @@ app.get("/api/books/:id", async (req, res) => {
     }
     res.status(200).json(result.rows[0]);
   } catch (err) {
-    console.error(`Ошибка GET /api/books/${id}:`, err);
+    console.error(`Error GET /api/books/${id}:`, err);
     res.status(500).json({ error: "Внутренняя ошибка сервера" });
   }
 });
@@ -136,7 +136,7 @@ app.post("/api/books", upload.single("cover"), async (req, res) => {
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
-    console.error("Ошибка POST /api/books:", err);
+    console.error("Error POST /api/books:", err);
     if (req.file) fs.unlinkSync(req.file.path);
     res.status(500).json({ error: "Не удалось сохранить книгу в базе данных" });
   }
@@ -179,7 +179,7 @@ app.put("/api/books/:id", upload.single("cover"), async (req, res) => {
 
     res.status(200).json(result.rows[0]);
   } catch (err) {
-    console.error(`Ошибка PUT /api/books/${id}:`, err);
+    console.error(`Error PUT /api/books/${id}:`, err);
     if (req.file) fs.unlinkSync(req.file.path);
     res.status(500).json({ error: "Не удалось обновить книгу" });
   }
@@ -204,7 +204,7 @@ app.delete("/api/books/:id", async (req, res) => {
 
     res.status(200).json({ message: "Книга успешно удалена" });
   } catch (err) {
-    console.error(`Ошибка DELETE /api/books/${id}:`, err);
+    console.error(`Error DELETE /api/books/${id}:`, err);
     res.status(500).json({ error: "Не удалось удалить книгу" });
   }
 });
@@ -212,21 +212,43 @@ app.delete("/api/books/:id", async (req, res) => {
 app.post("/api/auth/register", authLimiter, async (req, res) => {
   const { username, password, email } = req.body;
 
+  if (!username || typeof username !== "string" || !username.trim()) {
+    return res.status(400).json({ error: "Логин обязателен" });
+  }
+
+  if (!email || typeof email !== "string" || !email.includes("@")) {
+    return res
+      .status(400)
+      .json({ error: "Email обязателен и должен быть корректным адресом" });
+  }
+
+  if (!password || typeof password !== "string" || password.length < 6) {
+    return res
+      .status(400)
+      .json({ error: "Пароль обязателен и должен содержать не менее 6 символов" });
+  }
+
   const userFromDb = await pool.query(
-    "SELECT username FROM users WHERE username = $1 LIMIT 1",
-    [username],
+    "SELECT id, username, email FROM users WHERE username = $1 OR email = $2 LIMIT 1",
+    [username.trim(), email.trim().toLowerCase()],
   );
 
   if (userFromDb.rows.length !== 0) {
+    const existing = userFromDb.rows[0];
+    if (existing.username.toLowerCase() === username.trim().toLowerCase()) {
+      return res
+        .status(409)
+        .json({ error: "Пользователь с таким username уже существует" });
+    }
     return res
       .status(409)
-      .json({ error: "Пользователь с таким username уже существует" });
+      .json({ error: "Пользователь с таким email уже существует" });
   }
 
   const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
   const insertUser = await pool.query(
     "INSERT INTO users (username, password_hash, email) VALUES ($1, $2, $3) RETURNING id, username, role, email, bg_color",
-    [username, passwordHash, email || null],
+    [username.trim(), passwordHash, email.trim().toLowerCase()],
   );
   const newUser = insertUser.rows[0];
 
@@ -306,7 +328,8 @@ app.post("/api/auth/forgot-password", authLimiter, async (req, res) => {
 
     if (userRes.rows.length === 0) {
       return res.status(200).json({
-        message: "Если данный email зарегистрирован, инструкция по сбросу пароля отправлена.",
+        message:
+          "Если данный email зарегистрирован, инструкция по сбросу пароля отправлена.",
       });
     }
 
@@ -315,33 +338,44 @@ app.post("/api/auth/forgot-password", authLimiter, async (req, res) => {
 
     await redis.set(`password_reset:${resetToken}`, user.id, "EX", 900);
 
-    const previewUrl = await sendPasswordResetEmail(email.trim().toLowerCase(), resetToken);
+    const previewUrl = await sendPasswordResetEmail(
+      email.trim().toLowerCase(),
+      resetToken,
+    );
 
     res.status(200).json({
-      message: "Ссылка для сброса пароля отправлена на почту (действительна 15 минут).",
+      message:
+        "Ссылка для сброса пароля отправлена на почту (действительна 15 минут).",
       previewUrl: typeof previewUrl === "string" ? previewUrl : undefined,
       resetToken,
     });
   } catch (err) {
-    logger.error({ err }, "Ошибка при запросе сброса пароля");
-    res.status(500).json({ error: "Не удалось отправить письмо для сброса пароля" });
+    logger.error({ err }, "Error requesting password reset");
+    res
+      .status(500)
+      .json({ error: "Не удалось отправить письмо для сброса пароля" });
   }
 });
 
 app.post("/api/auth/reset-password", authLimiter, async (req, res) => {
   const { token, newPassword } = req.body;
   if (!token || !newPassword) {
-    return res.status(400).json({ error: "Токен сброса и новый пароль обязательны" });
+    return res
+      .status(400)
+      .json({ error: "Токен сброса и новый пароль обязательны" });
   }
   if (newPassword.length < 6) {
-    return res.status(400).json({ error: "Пароль должен содержать не менее 6 символов" });
+    return res
+      .status(400)
+      .json({ error: "Пароль должен содержать не менее 6 символов" });
   }
 
   try {
     const userId = await redis.get(`password_reset:${token}`);
     if (!userId) {
       return res.status(400).json({
-        error: "Ссылка для сброса пароля недействительна или истёк срок её действия (15 минут)",
+        error:
+          "Ссылка для сброса пароля недействительна или истёк срок её действия (15 минут)",
       });
     }
 
@@ -353,12 +387,16 @@ app.post("/api/auth/reset-password", authLimiter, async (req, res) => {
 
     await redis.del(`password_reset:${token}`);
 
-    logger.info({ userId }, "Пароль пользователя успешно обновлён через сброс по email");
+    logger.info(
+      { userId },
+      "User password successfully reset via email",
+    );
     res.status(200).json({
-      message: "Пароль успешно изменён! Теперь вы можете войти с новым паролем.",
+      message:
+        "Пароль успешно изменён! Теперь вы можете войти с новым паролем.",
     });
   } catch (err) {
-    logger.error({ err }, "Ошибка при сбросе пароля");
+    logger.error({ err }, "Error resetting password");
     res.status(500).json({ error: "Не удалось обновить пароль" });
   }
 });
@@ -386,7 +424,7 @@ app.patch(
         bgColor: result.rows[0].bg_color,
       });
     } catch (err) {
-      console.error("Ошибка при обновлении темы:", err);
+      console.error("Error updating theme:", err);
       res.status(500).json({ error: "Не удалось сохранить тему оформления" });
     }
   },
@@ -398,14 +436,11 @@ async function initDb() {
       id SERIAL PRIMARY KEY,
       username VARCHAR(50) UNIQUE NOT NULL,
       password_hash VARCHAR(255) NOT NULL,
-      email VARCHAR(100) UNIQUE,
+      email VARCHAR(100) UNIQUE NOT NULL,
       role VARCHAR(20) NOT NULL DEFAULT 'user',
       bg_color VARCHAR(30) DEFAULT '#121214',
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
-
-    ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(100) UNIQUE;
-    ALTER TABLE users ADD COLUMN IF NOT EXISTS bg_color VARCHAR(30) DEFAULT '#121214';
 
     CREATE TABLE IF NOT EXISTS books (
       id SERIAL PRIMARY KEY,

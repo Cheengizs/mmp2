@@ -21,6 +21,10 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!email.trim() || !email.includes('@')) {
+      onError('Пожалуйста, укажите корректный email');
+      return;
+    }
     if (password !== confirmPassword) {
       onError('Пароли не совпадают');
       return;
@@ -31,7 +35,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
       const res = await fetch(`${apiBase}/api/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password, email: email || undefined }),
+        body: JSON.stringify({ username: username.trim(), password, email: email.trim() }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -65,13 +69,14 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
         </div>
 
         <div style={styles.formGroup}>
-          <label style={styles.label}>Email (для восстановления пароля)</label>
+          <label style={styles.label}>Email *</label>
           <input
             type="email"
             style={styles.input}
             placeholder="example@mail.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            required
           />
         </div>
 

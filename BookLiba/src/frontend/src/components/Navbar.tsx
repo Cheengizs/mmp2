@@ -6,6 +6,7 @@ interface NavbarProps {
   onLogout: () => void;
   onThemeChange?: (color: string) => void;
   currentBg?: string;
+  onOpenAdminPanel?: () => void;
 }
 
 const THEME_PRESETS = [
@@ -21,6 +22,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onLogout,
   onThemeChange,
   currentBg,
+  onOpenAdminPanel,
 }) => {
   const getRoleBadgeStyle = (role: string): React.CSSProperties => {
     switch (role) {
@@ -74,6 +76,15 @@ export const Navbar: React.FC<NavbarProps> = ({
             {user.role.toUpperCase()}
           </span>
         </div>
+        {user.role === 'admin' && (
+          <button
+            type="button"
+            onClick={onOpenAdminPanel}
+            style={styles.adminButton}
+          >
+            ⚙️ Админ-панель
+          </button>
+        )}
         <button onClick={onLogout} style={styles.logoutButton}>
           Выйти
         </button>
@@ -157,6 +168,16 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: '#27272a',
     color: '#fca5a5',
     border: '1px solid #3f3f46',
+    borderRadius: 6,
+    padding: '8px 14px',
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  adminButton: {
+    backgroundColor: '#7c3aed',
+    color: '#ffffff',
+    border: 'none',
     borderRadius: 6,
     padding: '8px 14px',
     fontSize: 13,
